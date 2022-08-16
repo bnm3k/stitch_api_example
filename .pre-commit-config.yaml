@@ -1,0 +1,40 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.1.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-toml
+    -   id: check-added-large-files
+    -   id: check-merge-conflict
+    -   id: check-ast
+    -   id: detect-private-key
+    -   id: check-shebang-scripts-are-executable
+-   repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.8.0.4
+    hooks:
+    -   id: shellcheck
+-   repo: local
+    hooks:
+    -   id: format-py
+        name: Format python files
+        entry: make format
+        language: system
+        types: ["python"]
+        pass_filenames: false
+    -   id: lint-py
+        name: Lint python files
+        entry: make lint
+        language: system
+        types: ["python"]
+        pass_filenames: false
+    -   id: tests
+        name: Run tests
+        entry: make test
+        language: system
+        types: ["python"]
+        pass_filenames: false
+        stages: ["push"]
