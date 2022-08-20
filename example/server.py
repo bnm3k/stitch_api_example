@@ -1,5 +1,5 @@
 import os
-from flask import Flask, Blueprint
+from flask import Flask, Blueprint, current_app, redirect
 
 import click
 import pathlib
@@ -8,12 +8,34 @@ import stitch.sdk
 user_bp = Blueprint("user", __name__)
 
 
-@user_bp.route("/login", methods=("GET",))
-def hello():
-    return "Hello there"
+@user_bp.route("/bank_accounts", methods=("GET",))
+def retrieve_user_bank_accounts():
+    #  first check if we have user's token and refresh token
+    # if so, make an API call to stitch
+
+    # if not, have user authorize via stitch
+    # store token + refresh token
+    # then retrieve bank accounts
+    # return redirect("https://www.google.com", 307)
+    stitch_authz = current_app.config["stitch_authorization"]
+    res = stitch_authz.get_bank_accounts()
+    return res
 
 
-def load_config(app, test_config=None):
+@user_bp.route("/")
+def index():
+    html = """
+    <form>
+      <button formaction="/bank_accounts">List bank accounts</button>
+    </form>
+    """
+    return html
+
+
+def init_app(stitch_config, db_config=None):
+    # create app
+    app = Flask(__name__)
+
     # set up logging
     import logging
 
@@ -22,6 +44,13 @@ def load_config(app, test_config=None):
         format="%(asctime)s [%(levelname)s]: %(message)s",
         datefmt="%H:%M:%S",
     )
+
+    # set up authz for stitch api
+    stitch_authorization = stitch.sdk.Authorization(
+        client_id=stitch_config["client_id"],
+        client_secret=stitch_config["client_secret"],
+    )
+    app.config["stitch_authorization"] = stitch_authorization
 
     # since this is for a demo, override debug config and
     # set to True
@@ -36,25 +65,8 @@ def load_config(app, test_config=None):
     else:
         app.logger.info("CORS disabled")
 
-
-def load_handlers(app):
-
-    # add handlers
-    @app.route("/")
-    def index():
-        return "index\n"
-
-    app.register_blueprint(user_bp)
-
-
-def create_app(test_config=None):
-    app = Flask(__name__)
-
-    # configure app
-    load_config(app, test_config)
-
     # load handlers
-    load_handlers(app)
+    app.register_blueprint(user_bp)
 
     return app
 
@@ -88,11 +100,23 @@ def _validate_file_path(ctx, param, val):
     type=pathlib.Path,
     callback=_validate_file_path,
 )
-def run_app(stitch_client_id, stitch_cert_path):
+def run_server(stitch_client_id, stitch_cert_path):
+    # stitch config
+    stitch_client_secret = None
+    with open(stitch_cert_path, "r") as f:
+        stitch_client_secret = f.read()
+    stitch_config = {
+        "client_id": stitch_client_id,
+        "client_secret": stitch_client_secret,
+    }
 
-    app = create_app()
+    # configure app
+    app = init_app(stitch_config)
+
     app.logger.info(f"stitch client id: {stitch_client_id}")
     app.logger.info(f"stitch cert path: {stitch_cert_path}")
+
+    # run server
     app.run(
         host="127.0.0.1",
         port=3000,
@@ -105,4 +129,4 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
 
     load_dotenv()
-    run_app()
+    run_server()
