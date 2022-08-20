@@ -1,6 +1,4 @@
 # =============================================================================
-PROJECT_NAME:=stitch_sdk
-
 .DEFAULT_GOAL:=run
 .SILENT:
 SHELL:=/usr/bin/bash
@@ -25,7 +23,7 @@ init:
 	$(VENV_BIN)pre-commit install
 
 run:
-	python $(PROJECT_NAME)
+	python example/server.py
 
 lint:
 	flake8 --show-source .
