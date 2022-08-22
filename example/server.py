@@ -3,6 +3,7 @@ from flask import Flask, Blueprint, current_app, redirect, request, url_for
 import sqlite3
 import time
 from typing import Optional
+import json
 
 import click
 import pathlib
@@ -16,13 +17,6 @@ user_bp = Blueprint("user", __name__)
 
 @user_bp.route("/bank_accounts", methods=("GET",))
 def retrieve_bank_accounts():
-    #  first check if we have user's token and refresh token
-    # if so, make an API call to stitch
-
-    # if not, have user authorize via stitch
-    # store token + refresh token
-    # then retrieve bank accounts
-    # return redirect("https://www.google.com", 307)
     user_id = 1  # for demo, TODO, use sessions to retrieve user id
     stitch = current_app.config["stitch"]
 
@@ -30,8 +24,8 @@ def retrieve_bank_accounts():
         stitch_authorization_url = stitch.initiate_authorization(user_id)
         return redirect(stitch_authorization_url)
 
-    res = stitch.get_bank_accounts(user_id)
-    return res
+    bank_accounts = stitch.get_bank_accounts(user_id)
+    return bank_accounts
 
 
 @user_bp.route("/")

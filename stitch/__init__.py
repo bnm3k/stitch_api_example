@@ -88,6 +88,40 @@ class UserTokenStore(ABC):
         pass
 
 
+@dataclass
+class BankAccount:
+    name: str
+    currency: str
+    branch_code: int
+    bank_id: str
+    account_type: str
+    account_number: str
+    supports_payment_initiation: bool
+
+    @staticmethod
+    def _from_api_res(**r):
+        return BankAccount(
+            r["name"],
+            r["currency"],
+            int(r["branchCode"]),
+            r["bankId"],
+            r["accountType"],
+            r["accountNumber"],
+            r["supportsPaymentInitiation"],
+        )
+
+    # def as_dict(self):
+    #     return {
+    #         "name": self.name,
+    #         "currency": self.currency,
+    #         "branch_code": self.branch_code,
+    #         "bank_id": self.bank_id,
+    #         "account_type": self.account_type,
+    #         "account_number": self.account_number,
+    #         "supports_payment_initiation": self.supports_payment_initiation,
+    #     }
+
+
 class Stitch:
     def __init__(
         self,
@@ -204,15 +238,74 @@ class Stitch:
 
     def _get_token(self, user):
         td = self.token_store.get_token_details(user)
+        if td is None:
+            # TODO maybe throw exception
+            return
+
+        if td.is_expired():
+            params = {
+                "grant_type": "refresh_token",
+                "client_id": self.client_id,
+                "refresh_token": td.refresh_token,
+                "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+                "client_assertion": self._encode_client_jwt(),
+            }
+            refresh_user_tokens_url = "https://secure.stitch.money/connect/token"
+            req = requests.post(refresh_user_tokens_url, params)
+            td = TokenDetails.from_json(req.content)
+            self.token_store.set_token_details(user, td)
+
         return td
 
     def get_bank_accounts(self, user):
         td = self._get_token(user)
-        if td is not None:
-            return "Everything OK will implement return bank accounts"
-            return td.to_json()
+        if td is None:
+            raise Exception("User not authorized or error retrieving token")
+
+        stitch_url = "https://api.stitch.money/graphql"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {td.access_token}",
+        }
+        query = """query ListBankAccounts
+        {
+          user {
+            bankAccounts {
+              name
+              currency
+              branchCode
+              bankId
+              accountType
+              accountNumber
+              supportsPaymentInitiation
+            }
+          }
+        }
+        """
+        graphql_query = json.dumps(
+            {
+                "query": query,
+                "variables": None,
+            }
+        )
+        req = requests.post(stitch_url, data=graphql_query, headers=headers)
+        res = req.json()
+        errors = res.get("errors")
+        if req.status_code == 200 and errors is None:
+            bank_accounts_raw = res["data"]["user"]["bankAccounts"]
+            bank_accounts = []
+            for entry in bank_accounts_raw:
+                ba = BankAccount._from_api_res(**entry)
+                bank_accounts.append(ba)
+            return bank_accounts
+
         else:
-            return "user not authorized"
+            err_message = "Error retrieving user's stitch data"
+            if req.status_code != 200:
+                err_message = f"{err_message}. Status {req.status_code}"
+            if errors is not None:
+                err_message = f"{err_message}. {errors[0]['message']}"
+            raise Exception(err_message)
 
 
 class _TokenRequestParamHelpers:
