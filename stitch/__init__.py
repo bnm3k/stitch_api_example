@@ -110,17 +110,6 @@ class BankAccount:
             r["supportsPaymentInitiation"],
         )
 
-    # def as_dict(self):
-    #     return {
-    #         "name": self.name,
-    #         "currency": self.currency,
-    #         "branch_code": self.branch_code,
-    #         "bank_id": self.bank_id,
-    #         "account_type": self.account_type,
-    #         "account_number": self.account_number,
-    #         "supports_payment_initiation": self.supports_payment_initiation,
-    #     }
-
 
 class Stitch:
     def __init__(
@@ -306,67 +295,6 @@ class Stitch:
             if errors is not None:
                 err_message = f"{err_message}. {errors[0]['message']}"
             raise Exception(err_message)
-
-
-class _TokenRequestParamHelpers:
-    def __init__(self, client_id, client_secret, redirect_uri):
-        self._client_id = client_id
-        self._client_secret = client_secret
-        self._redirect_uri = redirect_uri
-        self.scope = ["openid", "accounts", "offline_access"]
-
-    def gen_params_for_user_refresh_token(self, refresh_token):
-        params = {
-            "grant_type": "refresh_token",
-            "client_id": self._client_id,
-            "refresh_token": refresh_token,
-            "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-            "client_assertion": self._encode_jwt(self._client_secret),
-        }
-        return params
-
-    def _encode_bytes_to_base64_str(self, bs) -> str:
-        res = base64.b64encode(bs)
-        res = re.sub(b"=", b"", res)
-        res = re.sub(b"\\+", b"-", res)
-        res = re.sub(b"\\/", b"_", res)
-        as_str = res.decode("ascii")
-        return as_str
-
-    def _gen_code_challenge_and_verifier(self) -> tuple[str, str]:
-        """
-        generates a random code
-
-        the hashed value of this code (challenge) is sent with the authorization
-        request
-
-        the unhashed value (verifier) is sent with the user access token request
-        """
-        random_bytes = secrets.token_bytes(32)
-
-        verifier = self._encode_bytes_to_base64_str(random_bytes)
-
-        challenge_bs = sha256(verifier.encode("utf-8")).digest()
-        challenge = self._encode_bytes_to_base64_str(challenge_bs)
-        return challenge, verifier
-
-    def _gen_random_base64_str(self) -> str:
-        return self._encode_bytes_to_base64_str(secrets.token_bytes(32))
-
-    def _encode_jwt(self, secret) -> str:
-        now = int(time.time())
-        one_hour_from_now = now + 3600
-        payload = {
-            "aud": "https://secure.stitch.money/connect/token",
-            "iss": self._client_id,
-            "sub": self._client_id,
-            "jti": str(uuid.uuid4()),
-            "iat": now,
-            "nbf": now,
-            "exp": one_hour_from_now,
-        }
-        encoded_jwt = jwt.encode(payload, secret, algorithm="RS256")
-        return encoded_jwt
 
 
 def _encode_bytes_to_base64_str(bs) -> str:
