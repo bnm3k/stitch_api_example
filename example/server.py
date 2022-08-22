@@ -1,5 +1,5 @@
 import os
-from flask import Flask, Blueprint, current_app, redirect
+from flask import Flask, Blueprint, current_app, redirect, request, url_for
 import sqlite3
 import time
 from typing import Optional
@@ -15,7 +15,7 @@ user_bp = Blueprint("user", __name__)
 
 
 @user_bp.route("/bank_accounts", methods=("GET",))
-def retrieve_user_bank_accounts():
+def retrieve_bank_accounts():
     #  first check if we have user's token and refresh token
     # if so, make an API call to stitch
 
@@ -23,8 +23,14 @@ def retrieve_user_bank_accounts():
     # store token + refresh token
     # then retrieve bank accounts
     # return redirect("https://www.google.com", 307)
-    stitch_authz = current_app.config["stitch"]
-    res = stitch_authz.get_bank_accounts()
+    user_id = 1  # for demo, TODO, use sessions to retrieve user id
+    stitch = current_app.config["stitch"]
+
+    if stitch.should_authorize(user_id):
+        stitch_authorization_url = stitch.initiate_authorization(user_id)
+        return redirect(stitch_authorization_url)
+
+    res = stitch.get_bank_accounts(user_id)
     return res
 
 
@@ -36,6 +42,19 @@ def index():
     </form>
     """
     return html
+
+
+@user_bp.route("/return", methods=("GET",))
+def handle_return_from_stitch_sso():
+    user_id = 1  # for demo, TODO, use sessions to retrieve user id
+    stitch = current_app.config["stitch"]
+
+    code = request.args.get("code")
+    # state = request.args.get("state")
+    # scope = request.args.get("scope")
+
+    stitch.complete_authorization(user_id, code)
+    return redirect(url_for("user.retrieve_bank_accounts"))
 
 
 # =============================================================================
@@ -197,6 +216,7 @@ def init_app(stitch_config, db_config):
         client_id=stitch_config["client_id"],
         client_secret=stitch_config["client_secret"],
         token_store=token_store,
+        redirect_uri="http://localhost:3000/return",
     )
     app.config["stitch"] = stitch_access
 
