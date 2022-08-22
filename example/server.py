@@ -1,9 +1,15 @@
 import os
 from flask import Flask, Blueprint, current_app, redirect
+import sqlite3
+import time
+from typing import Optional
 
 import click
 import pathlib
-import stitch.sdk
+from stitch import UserTokenStore, TokenDetails, Stitch
+
+# ============================ HANDLERS =======================================
+# =============================================================================
 
 user_bp = Blueprint("user", __name__)
 
@@ -17,7 +23,7 @@ def retrieve_user_bank_accounts():
     # store token + refresh token
     # then retrieve bank accounts
     # return redirect("https://www.google.com", 307)
-    stitch_authz = current_app.config["stitch_authorization"]
+    stitch_authz = current_app.config["stitch"]
     res = stitch_authz.get_bank_accounts()
     return res
 
@@ -32,7 +38,140 @@ def index():
     return html
 
 
-def init_app(stitch_config, db_config=None):
+# =============================================================================
+# ============================ DATABASE ACCESS ================================
+
+
+def init_db(db_file):
+    # schema = []
+    # schema.append(
+    schema_sql = """
+    create table if not exists users(
+        id integer primary key,
+        username text unique not null
+    );
+
+    create table if not exists user_stitch_tokens(
+        user_id integer primary key,
+
+        id_token blob not null,
+        access_token blob not null,
+        expires_at int not null,
+        token_type str not null,
+        refresh_token blob not null,
+        scope text not null,
+
+        foreign key(user_id) references users(id)
+    );
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+        c = conn.cursor()
+        c.executescript(schema_sql)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+def seed_db(db_file):
+    test_user = "test-user"
+
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+        c = conn.cursor()
+        c.execute("insert into users(username) values (?)", (test_user,))
+        conn.commit()
+    except sqlite3.IntegrityError as e:
+        pass
+    finally:
+        if conn:
+            conn.close()
+
+
+class SqliteUserTokenStore(UserTokenStore):
+    def __init__(self, db_file):
+        self._db_file = db_file
+
+    def get_token_details(self, user_id: int) -> Optional[TokenDetails]:
+        conn = None
+        token_details = None
+        try:
+            conn = sqlite3.connect(self._db_file)
+            c = conn.cursor()
+            res = c.execute(
+                """
+            select id_token, access_token, expires_at, token_type, refresh_token, scope
+            from user_stitch_tokens where user_id = ?
+            """,
+                (user_id,),
+            ).fetchone()
+            if res is not None:
+                token_details = TokenDetails(*res)
+        finally:
+            if conn:
+                conn.close()
+        return token_details
+
+    def set_token_details(self, user_id: int, td: TokenDetails):
+        conn = None
+        td_as_tuple = (
+            td.id_token,
+            td.access_token,
+            td.expires_at_seconds_from_epoch,
+            td.token_type,
+            td.refresh_token,
+            td.scope,
+        )
+        try:
+            conn = sqlite3.connect(self._db_file)
+            c = conn.cursor()
+            c.execute("pragma foreign_keys=1")
+            c.execute(
+                """
+            insert into
+            user_stitch_tokens(user_id, id_token, access_token, expires_at, token_type, refresh_token, scope)
+            values (?,?,?,?,?,?,?)
+            on conflict(user_id)
+            do update set
+                id_token=excluded.id_token,
+                access_token=excluded.access_token,
+                expires_at=excluded.expires_at,
+                token_type=excluded.token_type,
+                refresh_token=excluded.refresh_token,
+                scope=excluded.scope
+            """,
+                (user_id, *td_as_tuple),
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+        return
+
+    def delete_expired_tokens(self):
+        conn = None
+        try:
+            conn = sqlite3.connect(self._db_file)
+            c = conn.cursor()
+            now = time.time()
+            c.execute(
+                "delete from user_stitch_tokens where expires_at <= ?",
+                (now,),
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+
+# =============================================================================
+# ============================INITIALIZATION===================================
+
+
+def init_app(stitch_config, db_config):
     # create app
     app = Flask(__name__)
 
@@ -45,12 +184,21 @@ def init_app(stitch_config, db_config=None):
         datefmt="%H:%M:%S",
     )
 
+    # set up database
+
+    db_file = db_config["db_file"]
+    init_db(db_file)
+    seed_db(db_file)
+    app.config["db_file"] = db_file
+
     # set up authz for stitch api
-    stitch_authorization = stitch.sdk.Authorization(
+    token_store = SqliteUserTokenStore(db_file)
+    stitch_access = Stitch(
         client_id=stitch_config["client_id"],
         client_secret=stitch_config["client_secret"],
+        token_store=token_store,
     )
-    app.config["stitch_authorization"] = stitch_authorization
+    app.config["stitch"] = stitch_access
 
     # since this is for a demo, override debug config and
     # set to True
@@ -69,6 +217,10 @@ def init_app(stitch_config, db_config=None):
     app.register_blueprint(user_bp)
 
     return app
+
+
+# =============================================================================
+# ========================== CLI ==============================================
 
 
 def _validate_is_nonempty(ctx, param, val):
@@ -110,8 +262,15 @@ def run_server(stitch_client_id, stitch_cert_path):
         "client_secret": stitch_client_secret,
     }
 
+    # db config for sqlite
+    db_file = "./db.sqlite"
+    # db_file = ":memory:"
+    db_config = {
+        "db_file": db_file,
+    }
+
     # configure app
-    app = init_app(stitch_config)
+    app = init_app(stitch_config, db_config)
 
     app.logger.info(f"stitch client id: {stitch_client_id}")
     app.logger.info(f"stitch cert path: {stitch_cert_path}")
@@ -130,3 +289,4 @@ if __name__ == "__main__":
 
     load_dotenv()
     run_server()
+# =============================================================================
