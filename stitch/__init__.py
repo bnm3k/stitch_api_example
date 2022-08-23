@@ -225,6 +225,20 @@ class Stitch:
         encoded_jwt = jwt.encode(payload, self.client_secret, algorithm="RS256")
         return encoded_jwt
 
+    def _refresh_token(self, user, refresh_token: str) -> TokenDetails:
+        params = {
+            "grant_type": "refresh_token",
+            "client_id": self.client_id,
+            "refresh_token": refresh_token,
+            "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+            "client_assertion": self._encode_client_jwt(),
+        }
+        refresh_user_tokens_url = "https://secure.stitch.money/connect/token"
+        req = requests.post(refresh_user_tokens_url, params)
+        td = TokenDetails.from_json(req.content)
+        self.token_store.set_token_details(user, td)
+        return td
+
     def _get_token(self, user):
         td = self.token_store.get_token_details(user)
         if td is None:
@@ -232,17 +246,7 @@ class Stitch:
             return
 
         if td.is_expired():
-            params = {
-                "grant_type": "refresh_token",
-                "client_id": self.client_id,
-                "refresh_token": td.refresh_token,
-                "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-                "client_assertion": self._encode_client_jwt(),
-            }
-            refresh_user_tokens_url = "https://secure.stitch.money/connect/token"
-            req = requests.post(refresh_user_tokens_url, params)
-            td = TokenDetails.from_json(req.content)
-            self.token_store.set_token_details(user, td)
+            td = self._refresh_token(user, td.refresh_token)
 
         return td
 
@@ -290,6 +294,9 @@ class Stitch:
 
         else:
             err_message = "Error retrieving user's stitch data"
+            if errors[0]["message"] == "UNAUTHENTICATED: Token is expired or malformed":
+                self._refresh_token(user, td.refresh_token)
+                return self.get_bank_accounts(user)
             if req.status_code != 200:
                 err_message = f"{err_message}. Status {req.status_code}"
             if errors is not None:
