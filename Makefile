@@ -29,14 +29,14 @@ lint:
 	flake8 --show-source .
 	bandit -q -r -c "pyproject.toml" .
 
+build:
+	poetry build
+
 format:
 	black .
 
 test:
 	pytest
-
-build:
-	poetry build -q
 
 pre-commit:
 	pre-commit run --all-files
