@@ -7,7 +7,7 @@ import json
 
 import click
 import pathlib
-from stitch import UserTokenStore, TokenDetails, Stitch
+from stitch import UserTokenStoreInterface, TokenDetails, Stitch
 
 # ============================ HANDLERS =======================================
 # =============================================================================
@@ -104,7 +104,7 @@ def seed_db(db_file):
             conn.close()
 
 
-class SqliteUserTokenStore(UserTokenStore):
+class SqliteUserTokenStore(UserTokenStoreInterface):
     def __init__(self, db_file):
         self._db_file = db_file
 

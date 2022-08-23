@@ -79,7 +79,7 @@ class TokenDetails:
         )
 
 
-class UserTokenStore(ABC):
+class UserTokenStoreInterface(ABC):
     @abstractmethod
     def get_token_details(self, user: Any) -> Optional[TokenDetails]:
         pass
@@ -117,7 +117,7 @@ class Stitch:
         client_id,
         client_secret,
         redirect_uri,
-        token_store: UserTokenStore,
+        token_store: UserTokenStoreInterface,
         logger=None,
     ):
         self.client_id = client_id
