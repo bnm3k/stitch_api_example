@@ -277,10 +277,11 @@ def run_server(stitch_client_id, stitch_cert_path):
     }
 
     # db config for sqlite
-    db_file = "./db.sqlite"
+    db_filename = "db.sqlite"
+    db_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_filename)
     # db_file = ":memory:"
     db_config = {
-        "db_file": db_file,
+        "db_file": db_filepath,
     }
 
     # configure app
