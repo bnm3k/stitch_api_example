@@ -66,7 +66,7 @@ class TokenDetails:
 
     def is_expired(self) -> bool:
         now = time.time()
-        return self.expires_at_seconds_from_epoch > now
+        return self.expires_at_seconds_from_epoch <= now
 
     def __str__(self) -> str:
         return "TokenDetails(id_token={}..., access_token={}..., expires_at={}, token_type={}, refresh_token={}..., scope={})".format(
