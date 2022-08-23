@@ -209,8 +209,8 @@ def init_app(stitch_config, db_config):
     stitch_access = Stitch(
         client_id=stitch_config["client_id"],
         client_secret=stitch_config["client_secret"],
-        token_store=token_store,
         redirect_uri="http://localhost:3000/return",
+        token_store=token_store,
     )
     app.config["stitch"] = stitch_access
 

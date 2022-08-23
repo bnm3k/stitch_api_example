@@ -84,8 +84,20 @@ class UserTokenStoreInterface(ABC):
     def get_token_details(self, user: Any) -> Optional[TokenDetails]:
         pass
 
+    @abstractmethod
     def set_token_details(self, user: Any, token_details: TokenDetails):
         pass
+
+
+class InMemoryUserTokenStore(UserTokenStoreInterface):
+    def __init__(self):
+        self._store = dict()
+
+    def get_token_details(self, user: Any) -> Optional[TokenDetails]:
+        return self._store.get(user)
+
+    def set_token_details(self, user: Any, token_details: TokenDetails):
+        self._store[user] = token_details
 
 
 @dataclass
@@ -117,13 +129,16 @@ class Stitch:
         client_id,
         client_secret,
         redirect_uri,
-        token_store: UserTokenStoreInterface,
+        token_store: Optional[UserTokenStoreInterface] = None,
         logger=None,
     ):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
-        self.token_store = token_store
+        if token_store is None:
+            self.token_store = InMemoryUserTokenStore()
+        else:
+            self.token_store = token_store
         self._pending_authorization_requests = dict()
 
         if logger is None:
