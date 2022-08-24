@@ -44,10 +44,10 @@ def handle_return_from_stitch_sso():
     stitch = current_app.config["stitch"]
 
     code = request.args.get("code")
-    # state = request.args.get("state")
+    state = request.args.get("state")
     # scope = request.args.get("scope")
 
-    stitch.complete_authorization(user_id, code)
+    stitch.complete_authorization(user_id, code, state)
     return redirect(url_for("user.retrieve_bank_accounts"))
 
 
@@ -205,12 +205,12 @@ def init_app(stitch_config, db_config):
     app.config["db_file"] = db_file
 
     # set up authz for stitch api
-    token_store = SqliteUserTokenStore(db_file)
+    user_token_store = SqliteUserTokenStore(db_file)
     stitch_access = Stitch(
         client_id=stitch_config["client_id"],
         client_secret=stitch_config["client_secret"],
         redirect_uri="http://localhost:3000/return",
-        token_store=token_store,
+        user_token_store=user_token_store,
     )
     app.config["stitch"] = stitch_access
 

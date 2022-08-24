@@ -100,6 +100,62 @@ class InMemoryUserTokenStore(UserTokenStoreInterface):
         self._store[user] = token_details
 
 
+@dataclass(frozen=True)
+class UserAuthRequest:
+    stitch_state: str
+    user_id: Any
+    code_verifier: str
+
+
+class UserAuthRequestsStoreInterface(ABC):
+    @abstractmethod
+    def set_request(self, req: UserAuthRequest):
+        pass
+
+    @abstractmethod
+    def get_request(self, state: str) -> UserAuthRequest:
+        pass
+
+    @abstractmethod
+    def pop_request(self, state: str) -> UserAuthRequest:
+        """
+        get then delete request
+        """
+        pass
+
+    @abstractmethod
+    def delete_request(self, state: str) -> bool:
+        """
+        return True if request present and is deleted
+        return False if request does not exist
+        """
+        pass
+
+
+class InMemoryUserAuthRequestsStore(UserAuthRequestsStoreInterface):
+    def __init__(self):
+        self._store = dict()
+
+    def get_request(self, state: str) -> UserAuthRequest:
+        return self._store.get(state)
+
+    def set_request(self, req: UserAuthRequest):
+        self._store[req.stitch_state] = req
+
+    def pop_request(self, state: str) -> UserAuthRequest:
+        req = self._store.get(state)
+        if req is not None:
+            del self._store[state]
+        return req
+
+    def delete_request(self, state: str) -> bool:
+        req = self._store.get(state)
+        if req is not None:
+            del self._store[state]
+            return True
+        return False
+
+
 @dataclass
 class BankAccount:
     name: str
@@ -129,17 +185,25 @@ class Stitch:
         client_id,
         client_secret,
         redirect_uri,
-        token_store: Optional[UserTokenStoreInterface] = None,
+        user_token_store: Optional[UserTokenStoreInterface] = None,
+        user_auth_requests_store: Optional[UserAuthRequestsStoreInterface] = None,
         logger=None,
     ):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
-        if token_store is None:
+
+        # token store
+        if user_token_store is None:
             self.token_store = InMemoryUserTokenStore()
         else:
-            self.token_store = token_store
-        self._pending_authorization_requests = dict()
+            self.token_store = user_token_store
+
+        # auth requests
+        if user_auth_requests_store is None:
+            self.user_auth_reqs_store = InMemoryUserAuthRequestsStore()
+        else:
+            self.user_auth_reqs_store = user_auth_requests_store
 
         if logger is None:
             logger = logging.getLogger(__name__)
@@ -158,10 +222,9 @@ class Stitch:
         state = _gen_random_base64_str()
         nonce = _gen_random_base64_str()
         code_challenge, code_verifier = _gen_code_challenge_and_verifier()
-        self._pending_authorization_requests[user] = {
-            "code_verifier": code_verifier,
-            "state": state,
-        }
+        self.user_auth_reqs_store.set_request(
+            UserAuthRequest(state, user, code_verifier)
+        )
         scope = ["openid", "accounts", "offline_access"]
         params = {
             # unique ID of client generated
@@ -203,13 +266,11 @@ class Stitch:
         )
         return authz_code_endpoint
 
-    def complete_authorization(self, user, authorization_code, state=None, scope=None):
-        # TODO, relying on Key lookup error to signify to library users that
-        # they are trying to call this method without having first called
-        # initiate_authorization. Consider throwing a specific exception
-        # instead
-        req = self._pending_authorization_requests[user]
-        code_verifier = req["code_verifier"]
+    def complete_authorization(self, user, authorization_code, state, scope=None):
+        req = self.user_auth_reqs_store.pop_request(state)
+        if req is None:
+            raise KeyError(f"Invalid stitch_state {state}")
+        code_verifier = req.code_verifier
 
         params = {
             "grant_type": "authorization_code",

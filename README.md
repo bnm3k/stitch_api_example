@@ -8,22 +8,22 @@ The Stitch SDK provides access to the Stitch API.
 
 The following are the key design principles for this library:
 
-- use as few third party dependencies as possible, for example, even though we
+- Use as few third party dependencies as possible, for example, even though we
   could use the `gql` library to make graphql queries, we instead opt for doing
   it manually. The only third-party dependencies are
   [requests](https://requests.readthedocs.io/en/latest/) and
   [PyJWT](https://pyjwt.readthedocs.io/en/stable/)
 - keep as little state as possible within the library. For example, it is up to
-  the caller to implement and provide a `TokenStore` in which the tokens are
-  stored. This allows the caller to use their preferred solution, be it
-  in-memory, redis or some other solution. Currently, the library deviates a bit
-  from this goal a bit when it comes to authorization flows since it stores
-  pending requests metadata, i.e. the `state` and `code_verifier` to simplify
-  usage but in future this shall be left to the caller.
-- if an action requires user interaction, it should be up to the caller to
+  the caller to implement and provide a `User Token Store` in which the tokens
+  are stored, and a `User Auth Requests Store`. This allows the caller to use
+  their preferred solution, be it in-memory, redis or some other solution.
+  In-memory defaults that use dicts are provided so that one can tinker around
+  with the SDK. However, for production, it is recommended that the caller
+  implements and provides their desired store (I personally prefer sqlite)
+- If an action requires end-user interaction, it should be up to the caller to
   initiate that action. For example, redirects to stitch for authorization
-- if an action does not require user interaction, handle it within the library,
-  for example, refreshing tokens.
+- If an action does not require end-user interaction, handle it within the
+  library, for example, refreshing tokens.
 
 ## Usage
 
